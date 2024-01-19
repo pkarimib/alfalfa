@@ -54,6 +54,7 @@
 #include "pacer.hh"
 #include "procinfo.hh"
 #include "barcode.hh"
+#include "pantea.hh"
 
 using namespace std;
 using namespace std::chrono;
@@ -351,8 +352,7 @@ int main( int argc, char *argv[] )
       }
 
       auto barcode = pantea_cc::read_barcode(last_raster.get());
-
-      cerr << "Barcode: " << barcode << "\n";
+      pantea_cc::log_event("Send Barcode", barcode, "barcode");
 
       if ( encode_jobs.size() > 0 ) {
         /* a frame is being encoded now */
