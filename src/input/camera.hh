@@ -50,7 +50,7 @@ static const std::unordered_map<std::string, uint32_t> PIXEL_FORMAT_STRS {
 class Camera : public FrameInput
 {
 private:
-  const unsigned int NUM_BUFFERS = 4;
+  const unsigned int NUM_BUFFERS = 2;
 
   uint16_t width_;
   uint16_t height_;

@@ -53,6 +53,7 @@
 #include "camera.hh"
 #include "pacer.hh"
 #include "procinfo.hh"
+#include "barcode.hh"
 
 using namespace std;
 using namespace std::chrono;
@@ -348,6 +349,10 @@ int main( int argc, char *argv[] )
       if ( not last_raster.initialized() ) {
         return { ResultType::Exit, EXIT_FAILURE };
       }
+
+      auto barcode = pantea_cc::read_barcode(last_raster.get());
+
+      cerr << "Barcode: " << barcode << "\n";
 
       if ( encode_jobs.size() > 0 ) {
         /* a frame is being encoded now */
@@ -675,6 +680,9 @@ int main( int argc, char *argv[] )
         return ResultType::Continue;
       }
 
+      // cerr << "Ack received " << this_ack_seq << " ("
+      //      << ack.frame_no() << ", " << ack.fragment_no() << ")\n";
+
       last_acked = this_ack_seq;
       avg_delay = ack.avg_delay();
       receiver_last_acked_state.reset( ack.current_state() );
@@ -691,6 +699,7 @@ int main( int argc, char *argv[] )
         while ( pacer.ms_until_due() == 0 ) {
           assert( not pacer.empty() );
 
+          // goes on the networks
           socket.send( pacer.front() );
           pacer.pop();
         }

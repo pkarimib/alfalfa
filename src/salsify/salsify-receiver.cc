@@ -47,6 +47,7 @@
 #include "display.hh"
 #include "paranoid.hh"
 #include "procinfo.hh"
+#include "barcode.hh"
 
 using namespace std;
 using namespace std::chrono;
@@ -108,7 +109,10 @@ void display_task( const VP8Raster & example_raster, bool fullscreen )
     cv.wait( lock, []() { return not display_queue.empty(); } );
 
     while( not display_queue.empty() ) {
-      display.draw( display_queue.front() );
+      auto frame = display_queue.front();
+      auto barcode = pantea_cc::read_barcode( frame );
+      cerr << "barcode: " << barcode << endl;
+      display.draw( frame );
       display_queue.pop();
     }
   }

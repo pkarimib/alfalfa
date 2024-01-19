@@ -87,7 +87,7 @@ Camera::Camera( const uint16_t width, const uint16_t height,
   SystemCall( "buffer request", ioctl( camera_fd_.fd_num(), VIDIOC_REQBUFS, &buf_request ) );
 
   if ( buf_request.count != NUM_BUFFERS ) {
-    throw runtime_error( "couldn't get enough video4linux2 buffers" );
+    throw runtime_error( "couldn't get enough video4linux2 buffers: " + to_string( buf_request.count ) );
   }
 
   /* allocate buffers */
