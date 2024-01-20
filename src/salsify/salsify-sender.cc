@@ -251,7 +251,7 @@ int main( int argc, char *argv[] )
     }
   }
 
-  if ( optind + 3 >= argc ) {
+  if ( optind + 4 >= argc ) {
     usage( argv[ 0 ] );
     return EXIT_FAILURE;
   }
@@ -268,6 +268,9 @@ int main( int argc, char *argv[] )
   if (!out_video_file) {
       throw std::runtime_error("Failed to open for writing" + std::string(out_file));
   }
+  /* start of experiment */
+  static const auto start_time = system_clock::now();
+  auto maxRuntime = std::chrono::seconds(std::stol(argv[optind + 4]));
 
   /* make pacer to smooth out outgoing packets */
   Pacer pacer;
@@ -722,7 +725,14 @@ int main( int argc, char *argv[] )
   encode_start_pipe.first.write( "1" );
 
   /* handle events */
-  while ( true ) {
+  while (true) {
+      // Check if the program has been running for more than 10 seconds
+      auto elapsedTime = duration_cast<seconds>(system_clock::now() - start_time);
+      if (elapsedTime >= maxRuntime) {
+          cerr << "Exiting after " << elapsedTime.count() << " seconds" << endl;
+          break;
+      }
+
     const auto poll_result = poller.poll( pacer.ms_until_due() );
     if ( poll_result.result == Poller::Result::Type::Exit ) {
       if ( poll_result.exit_status ) {
@@ -732,6 +742,7 @@ int main( int argc, char *argv[] )
       return poll_result.exit_status;
     }
   }
+
   fclose(out_video_file);
   return EXIT_FAILURE;
 }
