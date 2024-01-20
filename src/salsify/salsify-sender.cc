@@ -251,7 +251,7 @@ int main( int argc, char *argv[] )
     }
   }
 
-  if ( optind + 2 >= argc ) {
+  if ( optind + 3 >= argc ) {
     usage( argv[ 0 ] );
     return EXIT_FAILURE;
   }
@@ -260,6 +260,14 @@ int main( int argc, char *argv[] )
   UDPSocket socket;
   socket.connect( Address( argv[ optind ], argv[ optind + 1 ] ) );
   socket.set_timestamps();
+
+  /* The file where the input video is saved */
+  const char* out_file = argv[optind + 3];
+  cerr << "Saving video to " << out_file << endl;
+  FILE *out_video_file = fopen(out_file, "wb");
+  if (!out_video_file) {
+      throw std::runtime_error("Failed to open for writing" + std::string(out_file));
+  }
 
   /* make pacer to smooth out outgoing packets */
   Pacer pacer;
@@ -343,6 +351,7 @@ int main( int argc, char *argv[] )
   /* fetch frames from webcam */
   poller.add_action( Poller::Action( encode_start_pipe.second, Direction::In,
     [&]() -> Result {
+
       encode_start_pipe.second.read();
 
       last_raster = camera.get_next_frame();
@@ -353,6 +362,7 @@ int main( int argc, char *argv[] )
 
       auto barcode = pantea_cc::read_barcode(last_raster.get());
       pantea_cc::log_event("Send Barcode", barcode, "barcode");
+      last_raster.get().get().dump(out_video_file);
 
       if ( encode_jobs.size() > 0 ) {
         /* a frame is being encoded now */
@@ -721,6 +731,6 @@ int main( int argc, char *argv[] )
       return poll_result.exit_status;
     }
   }
-
+  fclose(out_video_file);
   return EXIT_FAILURE;
 }

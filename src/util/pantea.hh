@@ -25,7 +25,7 @@ template <typename T>
 void log_event(const char* what, const T& data, const char* unit = nullptr, const char * extra = nullptr) {
   const auto now = now_ms();
   static time_t job_start_time_ms = now;
-  std::cerr << "[pantea] " << what << " " << data << (unit ? " " : "")
+  std::cerr << "(pantea.h:35): [pantea] " << what << " " << data << (unit ? " " : "")
                    << (unit ? unit : "") << " at time (ms) " << now
                    << (extra ? " " : "") << (extra ? extra : "")
                    << " [t=" << (now - job_start_time_ms) << "]" << std::endl;

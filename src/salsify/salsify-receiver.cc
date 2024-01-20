@@ -101,10 +101,14 @@ queue<RasterHandle> display_queue;
 mutex mtx;
 condition_variable cv;
 
-void display_task( const VP8Raster & example_raster, bool fullscreen )
+void display_task( const VP8Raster & example_raster, bool fullscreen, const char * out_file = "outvideo.yuv")
 {
   VideoDisplay display { example_raster, fullscreen };
-
+  // Open the file for writing
+  FILE *out_video_file = fopen(out_file, "wb");
+  if (!out_video_file) {
+      throw std::runtime_error("Failed to open for writing" + std::string(out_file));
+  }
   while( true ) {
     unique_lock<mutex> lock( mtx );
     cv.wait( lock, []() { return not display_queue.empty(); } );
@@ -113,10 +117,12 @@ void display_task( const VP8Raster & example_raster, bool fullscreen )
       auto frame = display_queue.front();
       auto barcode = pantea_cc::read_barcode( frame );
       pantea_cc::log_event("Received Barcode", barcode, "barcode");
-      display.draw( frame );
+      frame.get().dump( out_video_file );
+      // display.draw( frame );
       display_queue.pop();
     }
   }
+  fclose(out_video_file);
 }
 
 void enqueue_frame( FramePlayer & player, const Chunk & frame )
@@ -178,7 +184,7 @@ int main( int argc, char *argv[] )
     }
   }
 
-  if ( optind + 2 >= argc ) {
+  if ( optind + 3 >= argc ) {
     usage( argv[ 0 ] );
     return EXIT_FAILURE;
   }
@@ -197,7 +203,9 @@ int main( int argc, char *argv[] )
   player.set_error_concealment( true );
 
   /* construct display thread */
-  thread( [&player, fullscreen]() { display_task( player.example_raster(), fullscreen ); } ).detach();
+  //convert to char*
+  const char* out_file = argv[optind + 3];
+  thread( [&player, fullscreen, out_file]() { display_task( player.example_raster(), fullscreen,  out_file); } ).detach();
 
   /* frame no => FragmentedFrame; used when receiving packets out of order */
   unordered_map<size_t, FragmentedFrame> fragmented_frames;
