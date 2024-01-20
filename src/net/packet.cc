@@ -31,6 +31,7 @@
 #include <vector>
 
 #include "packet.hh"
+#include "pantea.hh"
 
 using namespace std;
 
@@ -238,6 +239,8 @@ void FragmentedFrame::send( UDPSocket & socket )
   assert( complete() );
 
   for ( const Packet & packet : fragments_ ) {
+    pantea_cc::log_event("Net SentVideo", packet.payload().size(), "bytes");
+    pantea_cc::log_event("bytes_sent SendPacketToNetwork", packet.payload().size(), "bytes");
     socket.send( packet.to_string() );
   }
 }

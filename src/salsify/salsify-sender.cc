@@ -601,6 +601,7 @@ int main( int argc, char *argv[] )
                  << "] "
                  << "Skipping frame " << frame_no << "\n";
             skipped_count++;
+            pantea_cc::log_event("VC EncodeVideoFrame", 0, "frame");
             return ResultType::Continue;
           } else {
             cerr << "Too many skipped frames; sending the bad-quality option on " << frame_no << "\n";
@@ -609,7 +610,7 @@ int main( int argc, char *argv[] )
           }
         }
       }
-
+      pantea_cc::log_event("VC EncodeVideoFrame", 1, "frame");
       auto output = move( good_outputs[ best_output_index ] );
 
       uint32_t target_minihash = output.encoder.minihash();
