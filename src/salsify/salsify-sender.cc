@@ -634,6 +634,8 @@ int main( int argc, char *argv[] )
       /* send 5x faster than packets are being received */
       const unsigned int inter_send_delay = min( 2000u, max( 500u, avg_delay / 5 ) );
       for ( const auto & packet : ff.packets() ) {
+        pantea_cc::log_event("Net SentVideo", packet.to_string().size(), "bytes");
+        pantea_cc::log_event("bytes_sent SendPacketToNetwork", packet.to_string().size(), "bytes");
         pacer.push( packet.to_string(), inter_send_delay );
       }
 
