@@ -365,7 +365,7 @@ int main( int argc, char *argv[] )
 
       auto barcode = pantea_cc::read_barcode(last_raster.get());
       pantea_cc::log_event("Send Barcode", barcode, "barcode");
-      pantea_cc::log_event("VideoCapture OutputHeight", 720);
+      pantea_cc::log_event("VideoCapture OutputHeight", 720, "pixels");
       last_raster.get().get().dump(out_video_file);
 
       if ( encode_jobs.size() > 0 ) {
