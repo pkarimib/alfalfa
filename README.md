@@ -60,3 +60,10 @@ salsify-sender --device [CAMERA, usually /dev/video0] [HOST] [PORT] 1337
 ```
 
 The default pixel format is YUV420. Most webcams support raw YUV420, however the frame rate might be low.
+
+For a fake camera, run:
+
+```
+sudo modprobe v4l2loopback
+ffmpeg -re -video_size 1920x1080 -pixel_format yuv420p -f rawvideo  -i /data/youtube_dataset/dataset_1920x1080/0_1.yuv -vf "scale=1280:720" -f v4l2 /dev/video0
+```
