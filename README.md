@@ -60,11 +60,3 @@ salsify-sender --device [CAMERA, usually /dev/video0] [HOST] [PORT] 1337
 ```
 
 The default pixel format is YUV420. Most webcams support raw YUV420, however the frame rate might be low.
-
-## Running it with scripts
-
-```
-cd ~/video_cc_scripts/end2end_experiment
-git checkout salsify
-
-```
