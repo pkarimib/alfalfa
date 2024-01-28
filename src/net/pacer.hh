@@ -33,15 +33,23 @@
 #include <chrono>
 #include <string>
 
+#include "packet.hh"
+
 /* pace outgoing packets */
 class Pacer
 {
-private:
+public:
   struct ScheduledPacket {
+    std::chrono::system_clock::time_point scheduled_at; /* time that it entered the pacer */
     std::chrono::system_clock::time_point when; /* scheduled outgoing time of packet */
     std::string what; /* serialized packet contents */
 
-    std::pair<uint32_t, uint16_t> packet_id; // added for the sake of Copa
+    // added for Copa
+    uint32_t frame_no;
+    uint16_t fragment_no;
+    size_t fragments_in_this_frame;
+
+    std::chrono::steady_clock::time_point capture_time; /* time that the FRAME was captured */
   };
 
   std::deque<ScheduledPacket> queue_ {};
@@ -62,22 +70,28 @@ public:
   }
 
   bool empty() const { return queue_.empty(); }
-  void push( const std::string & payload, const int delay_microseconds, const std::pair<uint32_t, uint16_t>& packet_id )
+  void push( const Packet& packet, const int delay_microseconds,
+             const std::chrono::steady_clock::time_point capture_time )
   {
+    const auto now = std::chrono::system_clock::now();
+
     if ( empty() ) {
-      queue_.push_back( { std::chrono::system_clock::now(), payload, packet_id } );
+      queue_.push_back( { now, now, packet.to_string(), packet.frame_no(), packet.fragment_no(),
+                          packet.fragments_in_this_frame(), capture_time  } );
     } else {
-      queue_.push_back( { queue_.back().when + std::chrono::microseconds( delay_microseconds ),
-                          payload,
-                          packet_id } );
+      queue_.push_back( { now,
+                          queue_.back().when + std::chrono::microseconds( delay_microseconds ),
+                          packet.to_string(),
+                          packet.frame_no(),
+                          packet.fragment_no(),
+                          packet.fragments_in_this_frame(),
+                          capture_time } );
     }
   }
 
-  const std::string & front() const { return queue_.front().what; }
+  const ScheduledPacket & front() const { return queue_.front(); }
   void pop() { queue_.pop_front(); }
   size_t size() const { return queue_.size(); }
-
-  const std::pair<uint32_t, uint16_t>& front_id() const { return queue_.front().packet_id; }
 };
 
 #endif /* PACER_HH */

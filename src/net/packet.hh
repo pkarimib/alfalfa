@@ -36,7 +36,6 @@
 #include "chunk.hh"
 #include "socket.hh"
 #include "exception.hh"
-#include "pacer.hh"
 
 class Packet
 {

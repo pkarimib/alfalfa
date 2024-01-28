@@ -200,30 +200,64 @@ private:
   using Clock = steady_clock;
   using PacketId = pair<uint32_t, uint16_t>; // (frame_no, fragment_no)
 
-  map<PacketId, Clock::time_point> sent_times_;
+  struct SentPacketInfo
+  {
+    uint32_t frame_no {};
+    uint16_t fragment_no {};
+    size_t fragments_in_this_frame {};
+
+    Clock::time_point sent_at {};
+    size_t size {};
+
+    Clock::time_point frame_capture_time {};
+  };
+
+  map<PacketId, SentPacketInfo> sent_packets_ {};
 
 public:
   CopaNetworkController() {}
 
-  void on_packet_sent( const PacketId packet_id )
+  void on_packet_sent( const Pacer::ScheduledPacket& scheduled_packet )
   {
-    sent_times_[ packet_id ] = Clock::now();
+    const PacketId packet_id { scheduled_packet.frame_no, scheduled_packet.fragment_no };
+
+    SentPacketInfo packet { scheduled_packet.frame_no, scheduled_packet.fragment_no,
+                            scheduled_packet.fragments_in_this_frame, Clock::now(),
+                            scheduled_packet.what.size(),
+                            scheduled_packet.capture_time };
+
+    sent_packets_.emplace( packet_id, packet );
   }
 
-  void on_ack_received( const PacketId packet_id )
+  void on_ack_received( const AckPacket & ack )
   {
-    auto sent_at_it = sent_times_.find( packet_id );
-    if ( sent_at_it == sent_times_.end() ) {
+    const auto feedback_time = Clock::now();
+    const auto packet_id = make_pair( ack.frame_no(), ack.fragment_no() );
+
+    auto sent_packet_it = sent_packets_.find( packet_id );
+    if ( sent_packet_it == sent_packets_.end() ) {
       // We did not record the time when this packet was sent.
       // XXX: This should not happen. Maybe ignore this ACK?
       throw runtime_error( "Received an ACK for a packet that was not sent." );
     }
 
-    const auto sent_at = sent_at_it->second;
-    sent_times_.erase( sent_at_it );
+    const auto sent_packet = sent_packet_it->second;
+    sent_packets_.erase( sent_packet_it );
 
-    // do processing
+    const auto sent_at = sent_packet.sent_at;
+    const auto packet_size = sent_packet.size;
+
+    const auto feedback_rtt = feedback_time - sent_at;
+    const auto min_pending_time = microseconds{ 0 }; // this is zero, because we're processing the ACK immediately
+    const auto propagation_rtt = feedback_rtt - min_pending_time;
+
+    if ( sent_packet.fragment_no == sent_packet.fragments_in_this_frame - 1 ) {
+      // this is the last fragment ("packet") of the frame
+    }
   }
+
+  size_t get_current_rate() const { return 0; }
+
 } copa_network_controller;
 
 int main( int argc, char *argv[] )
@@ -322,6 +356,9 @@ int main( int argc, char *argv[] )
   const size_t MAX_SKIPPED = 3;
   size_t skipped_count = 0;
 
+  /* stuff for Copa */
+  steady_clock::time_point last_frame_capture_time {};
+
   if ( not PIXEL_FORMAT_STRS.count( pixel_format ) ) {
     throw runtime_error( "unsupported pixel format" );
   }
@@ -391,6 +428,7 @@ int main( int argc, char *argv[] )
       encode_start_pipe.second.read();
 
       last_raster = camera.get_next_frame();
+      last_frame_capture_time = steady_clock::now();
 
       if ( not last_raster.initialized() ) {
         return { ResultType::Exit, EXIT_FAILURE };
@@ -670,7 +708,7 @@ int main( int argc, char *argv[] )
       for ( const auto & packet : ff.packets() ) {
         pantea_cc::log_event("Net SentVideo", packet.to_string().size(), "bytes");
         pantea_cc::log_event("bytes_sent SendPacketToNetwork", packet.to_string().size(), "bytes");
-        pacer.push( packet.to_string(), inter_send_delay, { packet.frame_no(), packet.fragment_no() } );
+        pacer.push( packet, inter_send_delay, last_frame_capture_time );
       }
 
       last_sent = system_clock::now();
@@ -737,7 +775,9 @@ int main( int argc, char *argv[] )
       avg_delay = ack.avg_delay();
       receiver_last_acked_state.reset( ack.current_state() );
       receiver_complete_states = move( ack.complete_states() );
-      copa_network_controller.on_ack_received( { ack.frame_no(), ack.fragment_no() } );
+
+      copa_network_controller.on_ack_received( ack );
+
       return ResultType::Continue;
     } )
   );
@@ -749,9 +789,10 @@ int main( int argc, char *argv[] )
         while ( pacer.ms_until_due() == 0 ) {
           assert( not pacer.empty() );
 
+          auto& scheduled_packet = pacer.front();
+
           // goes on the networks
-          socket.send( pacer.front() );
-          copa_network_controller.on_packet_sent( pacer.front_id() );
+          socket.send( scheduled_packet.what );
           pacer.pop();
         }
 
