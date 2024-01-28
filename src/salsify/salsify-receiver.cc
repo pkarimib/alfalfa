@@ -233,6 +233,19 @@ int main( int argc, char *argv[] )
       /* parse into Packet */
       const Packet packet { new_fragment.payload };
 
+      // XXX this is a hack to enable padding packets
+      // A padding packet is a packet with frame_no == UINT32_MAX
+      if ( packet.frame_no() == numeric_limits<uint32_t>::max() ) {
+        // this is a padding packet
+        // send an ack for it and forget about it
+        AckPacket( connection_id, packet.frame_no(), packet.fragment_no(),
+                   avg_delay.int_value(),
+                   duration_cast<microseconds>( steady_clock::now().time_since_epoch() ).count(),
+                   current_state,
+                   complete_states ).sendto( socket, new_fragment.source_address );
+        return ResultType::Continue;
+      }
+
       if ( packet.frame_no() < next_frame_no ) {
         /* we're not interested in this anymore */
         return ResultType::Continue;

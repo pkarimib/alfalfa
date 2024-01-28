@@ -245,7 +245,8 @@ public:
     sent_packets_.erase( sent_packet_it );
 
     const auto sent_at = sent_packet.sent_at;
-    const auto packet_size = sent_packet.size;
+    // const auto packet_size = sent_packet.size;
+    // const bool is_ack_for_padding = ( ack.frame_no() == numeric_limits<uint32_t>::max() );
 
     const auto feedback_rtt = feedback_time - sent_at;
     const auto min_pending_time = microseconds{ 0 };
@@ -256,9 +257,7 @@ public:
     }
   }
 
-  size_t get_current_rate() const { return 0; }
-
-  size_t get_target_frame_size() const { return get_current_rate() * 33 / 1000; }
+  size_t get_cwnd() const { return 0; }
 
 } copa_network_controller;
 
@@ -759,6 +758,12 @@ int main( int argc, char *argv[] )
 
       if ( ack.connection_id() != connection_id ) {
         /* this is not an ack for this session! */
+        return ResultType::Continue;
+      }
+
+      if ( ack.frame_no() == numeric_limits<uint32_t>::max() ) {
+        // this is an ack for a padding packet, doesn't belong to a frame
+        copa_network_controller.on_ack_received( ack );
         return ResultType::Continue;
       }
 
