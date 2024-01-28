@@ -248,7 +248,7 @@ public:
     const auto packet_size = sent_packet.size;
 
     const auto feedback_rtt = feedback_time - sent_at;
-    const auto min_pending_time = microseconds{ 0 }; // this is zero, because we're processing the ACK immediately
+    const auto min_pending_time = microseconds{ 0 };
     const auto propagation_rtt = feedback_rtt - min_pending_time;
 
     if ( sent_packet.fragment_no == sent_packet.fragments_in_this_frame - 1 ) {
@@ -257,6 +257,8 @@ public:
   }
 
   size_t get_current_rate() const { return 0; }
+
+  size_t get_target_frame_size() const { return get_current_rate() * 33 / 1000; }
 
 } copa_network_controller;
 
