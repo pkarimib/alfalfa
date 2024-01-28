@@ -213,10 +213,65 @@ private:
   };
 
   map<PacketId, SentPacketInfo> sent_packets_ {};
+  double sending_rate_smoothing_interval = 500.0;
+  double sending_propagation_alpha = 0.75;
+  double rtt_smoothed_alpha = 0.05;
+  int64_t bytes_acked_since_last_update_ = 0;
+  std::vector<std::pair<int64_t, int64_t>> standing_rtt_vector_ = {};
+  int64_t min_global_rtt_ = std::numeric_limits<int64_t>::max();
+  int64_t rtt_smoothed_ = -1;
+  double delta = 0.9;
+  int MTU_SIZE = 1300;
+  int64_t congestion_window_ = 3000;
+  int64_t inflight_ = 0;
+  int64_t latest_rtt_ = 0;
+  double sending_propagation_ = -1;
+  bool slow_start = true;
+  int64_t last_update_time = 0;
+  int update_dir = 1;
+  int prev_update_dir = 1;
+  double update_amt = 1;
+  bool do_slow_start = true;
+  bool first_feedback_received_ = false;
+  double smoothed_sending_rate_ = 0;
+  int64_t last_bitrate_sample_time_ = 0;
+  double cc_rate_ = 0;
 
 public:
   CopaNetworkController() {}
 
+  void UpdateSendingPropagation(double rtt){
+    if (sending_propagation_ == -1){
+      sending_propagation_ = rtt;
+    }else{
+      sending_propagation_ = sending_propagation_alpha * rtt + (1-sending_propagation_alpha) * sending_propagation_;
+    }
+}
+
+  int64_t GetStandingRTT(int64_t now){
+    double standing_rtt = std::numeric_limits<double>::max();
+    if (standing_rtt_vector_.empty()){
+      return min_global_rtt_;
+    }
+    for (auto i = standing_rtt_vector_.begin(); i != standing_rtt_vector_.end();) {
+      if (now - i->first <=  rtt_smoothed_){
+          standing_rtt = fmin(standing_rtt, (double)i->second);
+      } else {
+          i = standing_rtt_vector_.erase(i);
+          continue;
+      }
+      i++;
+    }
+    return standing_rtt;
+  }
+
+  double GetSendingPropagation() const {
+    if (sending_propagation_ == -1){
+      return 50.0;
+    }else{
+      return sending_propagation_;
+    }
+  }
   void on_packet_sent( const Pacer::ScheduledPacket& scheduled_packet )
   {
     const PacketId packet_id { scheduled_packet.frame_no, scheduled_packet.fragment_no };
@@ -242,6 +297,7 @@ public:
     }
 
     const auto sent_packet = sent_packet_it->second;
+    bytes_acked_since_last_update_ += sent_packet.size;
     sent_packets_.erase( sent_packet_it );
 
     const auto sent_at = sent_packet.sent_at;
@@ -249,15 +305,97 @@ public:
     // const bool is_ack_for_padding = ( ack.frame_no() == numeric_limits<uint32_t>::max() );
 
     const auto feedback_rtt = feedback_time - sent_at;
-    const auto min_pending_time = microseconds{ 0 };
+    const auto min_pending_time = milliseconds{ 0 };
     const auto propagation_rtt = feedback_rtt - min_pending_time;
+    auto propagation_rtt_ms = duration_cast<milliseconds>( propagation_rtt ).count();
+    UpdateSendingPropagation(propagation_rtt_ms);
+    if (propagation_rtt_ms < min_global_rtt_){
+      min_global_rtt_ = propagation_rtt_ms;
+    }
+    auto feedback_time_ms = duration_cast<milliseconds>( feedback_time.time_since_epoch() ).count();
+    standing_rtt_vector_.emplace_back(feedback_time_ms, propagation_rtt_ms);
+
+    if (rtt_smoothed_ == -1){
+      rtt_smoothed_ = propagation_rtt_ms;
+    }
+    else{
+      rtt_smoothed_ = rtt_smoothed_alpha * propagation_rtt_ms + (1-rtt_smoothed_alpha) * rtt_smoothed_;
+    }
 
     if ( sent_packet.fragment_no == sent_packet.fragments_in_this_frame - 1 ) {
       // this is the last fragment ("packet") of the frame
     }
   }
 
-  size_t get_cwnd() const { return 0; }
+  size_t get_cwnd(int64_t inflight) {
+    inflight_ = inflight;
+    int64_t now_ms = duration_cast<milliseconds>(Clock::now().time_since_epoch()).count();
+    auto at_time = now_ms;
+
+    // Window Calculation
+    auto rtt = GetStandingRTT(now_ms);
+    auto queuing_delay = rtt - min_global_rtt_;
+    assert(queuing_delay >= 0);
+    double copa_target_window;
+    if (queuing_delay ==  0 || min_global_rtt_ == std::numeric_limits<int64_t>::max())
+      copa_target_window = std::numeric_limits<double>::max();
+    else
+      copa_target_window = MTU_SIZE * rtt / (queuing_delay * delta);
+
+    double congestion_window = congestion_window_;
+    if (slow_start) {
+      if (congestion_window >= copa_target_window){
+        slow_start = false;
+      } else{
+        if (last_update_time + rtt <= at_time){
+          congestion_window = congestion_window_ + bytes_acked_since_last_update_;
+          bytes_acked_since_last_update_ = 0;
+          last_update_time = at_time;
+        }
+      }
+    }
+    // Update the window
+    else {
+      update_amt = 1.0;
+      if (congestion_window > 1.5 * inflight_){
+        update_amt = 1;
+        update_dir = 0;
+      }
+      if ((congestion_window < copa_target_window) && (congestion_window <= 3.0 * inflight_)) {
+        if (congestion_window <= 1.5 * inflight_){
+          update_dir += 1;
+          congestion_window += MTU_SIZE * update_amt * bytes_acked_since_last_update_ / (delta * (double) congestion_window_);
+        }
+      }
+      else {
+        update_dir -= 1;
+        congestion_window -= MTU_SIZE * update_amt * bytes_acked_since_last_update_ / (delta * (double) congestion_window_);
+      }
+
+      bytes_acked_since_last_update_ = 0;
+    }
+
+    double sending_rtt = GetSendingPropagation();
+
+    congestion_window = fmin(congestion_window, 12000 * sending_rtt / 8);
+    congestion_window = fmax(congestion_window, 1 * MTU_SIZE);
+
+    // This part is optional, it's how Vidaptive picks the sending rate
+    cc_rate_ = (double) congestion_window * 8.0 / (double) sending_rtt;
+    auto rate_sample = cc_rate_; // Originally (1 - headroom_) * cc_rate_
+    double beta = 1.0;
+    if(!smoothed_sending_rate_){
+        smoothed_sending_rate_ = rate_sample;
+    }else{
+      if (sending_rate_smoothing_interval != 0){
+        beta = 1 - exp(-((double)(at_time - last_bitrate_sample_time_)) / sending_rate_smoothing_interval);
+      }
+      smoothed_sending_rate_  =  (1 - beta) *  smoothed_sending_rate_ + beta * rate_sample;
+    }
+    last_bitrate_sample_time_ = at_time;
+
+    return congestion_window;
+  }
 
 } copa_network_controller;
 
