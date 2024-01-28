@@ -164,12 +164,17 @@ private:
   uint16_t fragment_no_;
   uint32_t avg_delay_;
 
+  /* <COPA> */
+  uint64_t receive_time_; // receiver's time when the packet is received
+  /* </COPA> */
+
   uint32_t current_state_;
   std::deque<uint32_t> complete_states_;
 
 public:
   AckPacket( const uint16_t connection_id, const uint32_t frame_no,
              const uint16_t fragment_no, const uint32_t avg_delay,
+             const uint64_t receive_time,
              const uint32_t current_state, std::deque<uint32_t> complete_states );
 
   AckPacket( const Chunk & str );
@@ -183,6 +188,7 @@ public:
   uint32_t frame_no() const { return frame_no_; }
   uint16_t fragment_no() const { return fragment_no_; }
   uint32_t avg_delay() const { return avg_delay_; }
+  uint64_t receive_time() const { return receive_time_; }
 
   uint32_t current_state() const { return current_state_; }
   std::deque<uint32_t> complete_states() const { return complete_states_; }
