@@ -40,6 +40,7 @@
 #include <unordered_map>
 #include <iomanip>
 #include <cmath>
+#include <map>
 
 #include "exception.hh"
 #include "finally.hh"
@@ -192,6 +193,38 @@ enum class OperationMode
 {
   S1, S2, Conventional
 };
+
+class CopaNetworkController
+{
+private:
+  using Clock = steady_clock;
+  using PacketId = pair<uint32_t, uint16_t>; // (frame_no, fragment_no)
+
+  map<PacketId, Clock::time_point> sent_times_;
+
+public:
+  CopaNetworkController() {}
+
+  void on_packet_sent( const PacketId packet_id )
+  {
+    sent_times_[ packet_id ] = Clock::now();
+  }
+
+  void on_ack_received( const PacketId packet_id )
+  {
+    auto sent_at_it = sent_times_.find( packet_id );
+    if ( sent_at_it == sent_times_.end() ) {
+      // We did not record the time when this packet was sent.
+      // XXX: This should not happen. Maybe ignore this ACK?
+      throw runtime_error( "Received an ACK for a packet that was not sent." );
+    }
+
+    const auto sent_at = sent_at_it->second;
+    sent_times_.erase( sent_at_it );
+
+    // do processing
+  }
+} copa_network_controller;
 
 int main( int argc, char *argv[] )
 {
@@ -637,7 +670,7 @@ int main( int argc, char *argv[] )
       for ( const auto & packet : ff.packets() ) {
         pantea_cc::log_event("Net SentVideo", packet.to_string().size(), "bytes");
         pantea_cc::log_event("bytes_sent SendPacketToNetwork", packet.to_string().size(), "bytes");
-        pacer.push( packet.to_string(), inter_send_delay );
+        pacer.push( packet.to_string(), inter_send_delay, { packet.frame_no(), packet.fragment_no() } );
       }
 
       last_sent = system_clock::now();
@@ -704,7 +737,7 @@ int main( int argc, char *argv[] )
       avg_delay = ack.avg_delay();
       receiver_last_acked_state.reset( ack.current_state() );
       receiver_complete_states = move( ack.complete_states() );
-
+      copa_network_controller.on_ack_received( { ack.frame_no(), ack.fragment_no() } );
       return ResultType::Continue;
     } )
   );
@@ -718,6 +751,7 @@ int main( int argc, char *argv[] )
 
           // goes on the networks
           socket.send( pacer.front() );
+          copa_network_controller.on_packet_sent( pacer.front_id() );
           pacer.pop();
         }
 

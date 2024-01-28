@@ -40,6 +40,8 @@ private:
   struct ScheduledPacket {
     std::chrono::system_clock::time_point when; /* scheduled outgoing time of packet */
     std::string what; /* serialized packet contents */
+
+    std::pair<uint32_t, uint16_t> packet_id; // added for the sake of Copa
   };
 
   std::deque<ScheduledPacket> queue_ {};
@@ -60,19 +62,22 @@ public:
   }
 
   bool empty() const { return queue_.empty(); }
-  void push( const std::string & payload, const int delay_microseconds )
+  void push( const std::string & payload, const int delay_microseconds, const std::pair<uint32_t, uint16_t>& packet_id )
   {
     if ( empty() ) {
-      queue_.push_back( { std::chrono::system_clock::now(), payload } );
+      queue_.push_back( { std::chrono::system_clock::now(), payload, packet_id } );
     } else {
       queue_.push_back( { queue_.back().when + std::chrono::microseconds( delay_microseconds ),
-                          payload } );
+                          payload,
+                          packet_id } );
     }
   }
 
   const std::string & front() const { return queue_.front().what; }
   void pop() { queue_.pop_front(); }
   size_t size() const { return queue_.size(); }
+
+  const std::pair<uint32_t, uint16_t>& front_id() const { return queue_.front().packet_id; }
 };
 
 #endif /* PACER_HH */

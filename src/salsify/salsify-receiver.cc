@@ -324,14 +324,13 @@ int main( int argc, char *argv[] )
 
       avg_delay.add( new_fragment.timestamp_us, packet.time_since_last() );
 
-      auto now = system_clock::now();
-
       AckPacket( connection_id, packet.frame_no(), packet.fragment_no(),
                  avg_delay.int_value(),
-                 duration_cast<microseconds>( now.time_since_epoch() ).count(),
+                 duration_cast<microseconds>( steady_clock::now().time_since_epoch() ).count(),
                  current_state,
                  complete_states ).sendto( socket, new_fragment.source_address );
 
+      auto now = system_clock::now();
       if ( verbose and next_mem_usage_report < now ) {
         cerr << "["
              << duration_cast<milliseconds>( now.time_since_epoch() ).count()
